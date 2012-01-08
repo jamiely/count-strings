@@ -15,8 +15,13 @@ main = do
 
 reString :: GenParser Char st RegularExpression
 reString = do
-  result <- try reConcat <|> reBase
+  result <- try expr <|> pexpr
   return $ result
+
+exprNoConcat = reBase
+
+expr = try reConcat <|> exprNoConcat
+pexpr = between lparen rparen expr
 
 reSymbol :: GenParser Char st RegularExpression
 reSymbol = do
@@ -31,9 +36,8 @@ rparen = char ')'
 
 reConcat :: GenParser Char st RegularExpression
 reConcat = do
-  {- result <- try (many reGroup) <|> try (many reBase)-}
-  r1 <- try reGroup <|> reBase
-  r2 <- try reConcat <|> try reGroup <|> reBase
+  r1 <- try pexpr <|> exprNoConcat
+  r2 <- expr  
   return $ Concat r1 r2
 
 reGroup :: GenParser Char st RegularExpression
@@ -47,15 +51,15 @@ reSymOrGroup = try reGroup <|> reSymbol
 
 reStar :: GenParser Char st RegularExpression
 reStar = do
-  sym <- reSymOrGroup
+  sym <- try pexpr <|> reSymbol
   char '*'
   return (Star sym)
 
 reUnion :: GenParser Char st RegularExpression
 reUnion = do
-  re1 <- try rePart <|> try reConcat <|> reSymbol
+  re1 <- pexpr <|> reSymbol
   char '|'
-  re2 <- try rePart <|> try reConcat <|> reSymbol
+  re2 <- pexpr <|> reSymbol
   return (Union re1 re2)
 
 reBase :: GenParser Char st RegularExpression
@@ -90,7 +94,8 @@ testParse = "Test parse" ~: TestList [
   "string 4" ~: prs reString "ab(ab)*" ~?= Just (Concat a (Concat b (Star ab))),
   "string 5" ~: prs reString "(ab)*" ~?= Just (Star ab),
   "string 6" ~: prs reString "(a|b)*" ~?= Just (Star aORb),
-  "string 7" ~: prs reString "((ab)|b)*" ~?= Just (Star (Union ab b))
+  "string 7" ~: prs reString "((ab)|b)*" ~?= Just (Star (Union ab b)),
+  "string 8" ~: prs reString "a(ab)*a" ~?= Just (Concat a (Concat (Star ab) a))
   ] where
   a = Symbol 'a'
   b = Symbol 'b'
