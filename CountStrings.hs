@@ -4,28 +4,59 @@ import Text.ParserCombinators.Parsec
 
 main :: IO ()
 main = do
+  testCases <- readLn :: IO Int
+  testStrings <- getNLines testCases
+  putStrLn $ unlines $ map show $ map processTest $ testStringsToTest testStrings
+  where
+
+  getNLines :: Int -> IO [String]
+  getNLines n
+    | n <= 0    = return []
+    | otherwise = do
+      l <- getLine
+      ls <- getNLines (n-1)
+      return $ l:ls
+
+  testStringsToTest :: [String] -> [(String, Int)]
+  testStringsToTest = map convert where
+    convert :: String -> (String, Int)
+    convert s = break $ words s
+
+    break :: [String] -> (String, Int)
+    break s = (head s, read (head (tail s)) :: Int)
+
+  processTest :: (String, Int) -> Int
+  processTest (reStr, lim) = count where
+    eitherRe = parse reString "(stdin)" reStr
+    possibilities = case eitherRe of
+      Left _   -> []
+      Right re -> exactPossibilities re lim
+    count = length possibilities
+
+test :: IO ()
+test = do
   runTestTT $ TestList [
     testListPossibilities,
     testParse
     ]
-  putStrLn $ show $ possibilities
-  putStrLn $ show $ length possibilities where
-  possibilities = ["Not implemented"]
-  {- possibilities = listPossibilities (RE "((ab)|(ba))") 2-}
+  return ()
 
 reString :: GenParser Char st RegularExpression
-reString = do
-  result <- try expr <|> pexpr
-  return $ result
+reString = try expr <|> pexpr
 
 exprNoConcat = reBase
 
-expr = try reConcat <|> exprNoConcat
+expr :: GenParser Char st RegularExpression
+expr = do
+  re <- many1 (try reBase <|> pexpr)
+  return $ reListConcat re
+
+pexpr :: GenParser Char st RegularExpression
 pexpr = between lparen rparen expr
 
 reSymbol :: GenParser Char st RegularExpression
 reSymbol = do
-  result <- letter
+  result <- char 'a' <|> char 'b'
   return (Symbol result)
 
 lparen :: GenParser Char st Char
@@ -36,7 +67,7 @@ rparen = char ')'
 
 reConcat :: GenParser Char st RegularExpression
 reConcat = do
-  r1 <- try pexpr <|> exprNoConcat
+  r1 <- exprNoConcat
   r2 <- expr  
   return $ Concat r1 r2
 
@@ -51,9 +82,9 @@ reSymOrGroup = try reGroup <|> reSymbol
 
 reStar :: GenParser Char st RegularExpression
 reStar = do
-  sym <- try pexpr <|> reSymbol
+  r <- pexpr <|> reSymbol
   char '*'
-  return (Star sym)
+  return $ Star r
 
 reUnion :: GenParser Char st RegularExpression
 reUnion = do
@@ -95,7 +126,15 @@ testParse = "Test parse" ~: TestList [
   "string 5" ~: prs reString "(ab)*" ~?= Just (Star ab),
   "string 6" ~: prs reString "(a|b)*" ~?= Just (Star aORb),
   "string 7" ~: prs reString "((ab)|b)*" ~?= Just (Star (Union ab b)),
-  "string 8" ~: prs reString "a(ab)*a" ~?= Just (Concat a (Concat (Star ab) a))
+  "string 8" ~: prs reString "a(ab)*a" ~?= Just (Concat a (Concat (Star ab) a)),
+  "string 9" ~: prs reString "(ab)*(a|b)ab" ~?= 
+    Just (Concat (Star ab) (Concat aORb ab)),
+  "string 10" ~: prs reString "a(b)" ~?= Just ab,
+  "string 11" ~: prs reString "a(b)ab" ~?= Just (Concat a (Concat b ab)),
+  "string 12a" ~: prs reString "(ab)|(ba)" ~?= Just (Union ab (Concat b a)),
+  "string 12b" ~: prs reUnion "(ab)|(ba)" ~?= Just (Union ab (Concat b a)),
+  "string 13" ~: prs reString "((abb*)|b)|(ab)ab" ~?=
+    Just (Concat (Union (Union (Concat a (Concat b (Star b))) b) ab) ab)
   ] where
   a = Symbol 'a'
   b = Symbol 'b'
@@ -115,6 +154,7 @@ data RegularExpression = Symbol Char
 
 reListConcat :: [RegularExpression] -> RegularExpression
 reListConcat [] = error "May not be empty"
+reListConcat [a] = a
 reListConcat res = foldr1 Concat res where 
 
 countPossibilities :: RegularExpression -> Int -> Int
