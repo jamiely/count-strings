@@ -1,21 +1,96 @@
 import Test.HUnit
 import qualified Data.List as List
+import Text.ParserCombinators.Parsec
 
 main :: IO ()
 main = do
   runTestTT $ TestList [
-    testListPossibilities
+    testListPossibilities,
+    testParse
     ]
   putStrLn $ show $ possibilities
   putStrLn $ show $ length possibilities where
   possibilities = ["Not implemented"]
   {- possibilities = listPossibilities (RE "((ab)|(ba))") 2-}
 
+reString :: GenParser Char st RegularExpression
+reString = do
+  result <- many (reGroup <|> reBase)
+  return $ reListConcat result
+
+reSymbol :: GenParser Char st RegularExpression
+reSymbol = do
+  result <- letter
+  return (Symbol result)
+
+lparen :: GenParser Char st Char
+lparen = char '('
+
+rparen :: GenParser Char st Char
+rparen = char ')'
+
+reGroup :: GenParser Char st RegularExpression
+reGroup = do
+  lparen
+  re <- reGroup <|> reBase
+  rparen
+  return re
+
+reStar :: GenParser Char st RegularExpression
+reStar = do
+  sym <- reSymbol
+  char '*'
+  return (Star sym)
+
+reUnion :: GenParser Char st RegularExpression
+reUnion = do
+  re1 <- reSymbol
+  char '|'
+  re2 <- reSymbol
+  return (Union re1 re2)
+
+reBase :: GenParser Char st RegularExpression
+reBase = try reUnion <|> try reStar <|> reSymbol
+
+testParse :: Test 
+testParse = "Test parse" ~: TestList [
+  "sym 1" ~: prs reSymbol "?" ~?= Nothing,
+  "sym 2" ~: prs reSymbol "a" ~?= Just a,
+  "sym 3" ~: prs reSymbol "ab" ~?= Just a,
+  "star 1" ~: prs reStar "a*" ~?= Just aStar,
+  "star 2" ~: prs reStar "ab*" ~?= Nothing,
+  "union 1" ~: prs reUnion "ab" ~?= Nothing,
+  "union 2" ~: prs reUnion "a|b" ~?= Just aORb,
+  "union 3" ~: prs reUnion "a*" ~?= Nothing,
+  "base 1" ~: prs reBase "a|b" ~?= Just aORb,
+  "base 2" ~: prs reBase "a*" ~?= Just aStar,
+  "base 3" ~: prs reBase "ab" ~?= Just a,
+  "group 1" ~: prs reGroup "(a)" ~?= Just a,
+  "group 2" ~: prs reGroup "(a*)" ~?= Just aStar,
+  "group 3" ~: prs reGroup "((a))" ~?= Just a,
+  "string 1" ~: prs reString "ab" ~?= Just ab,
+  "string 2" ~: prs reString "abab" ~?= Just (Concat a (Concat b ab)),
+  "string 3" ~: prs reString "aba*" ~?= Just (Concat a (Concat b aStar))
+  ] where
+  a = Symbol 'a'
+  b = Symbol 'b'
+  ab = Concat a b
+  aStar = Star a
+  aORb = Union a b
+  src = "(stdin)"
+  prs re str = case parse re src str of
+    Right re -> Just re
+    _        -> Nothing
+
 data RegularExpression = Symbol Char 
   | Concat RegularExpression RegularExpression 
   | Union RegularExpression RegularExpression
   | Star RegularExpression
   deriving (Show, Eq)
+
+reListConcat :: [RegularExpression] -> RegularExpression
+reListConcat [] = error "May not be empty"
+reListConcat res = foldr1 Concat res where 
 
 countPossibilities :: RegularExpression -> Int -> Int
 countPossibilities re len = length $ listPossibilities re len
