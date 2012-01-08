@@ -35,14 +35,6 @@ main = do
       Right re -> exactPossibilities re lim
     count = length possibilities
 
-test :: IO ()
-test = do
-  runTestTT $ TestList [
-    testListPossibilities,
-    testParse
-    ]
-  return ()
-
 reString :: GenParser Char st RegularExpression
 reString = try expr <|> pexpr
 
@@ -105,49 +97,6 @@ rePart = do
   rparen
   return re
 
-testParse :: Test 
-testParse = "Test parse" ~: TestList [
-  "sym 1" ~: prs reSymbol "?" ~?= Nothing,
-  "sym 2" ~: prs reSymbol "a" ~?= Just a,
-  "sym 3" ~: prs reSymbol "ab" ~?= Just a,
-  "star 1" ~: prs reStar "a*" ~?= Just aStar,
-  "star 2" ~: prs reStar "ab*" ~?= Nothing,
-  "union 1" ~: prs reUnion "ab" ~?= Nothing,
-  "union 2" ~: prs reUnion "a|b" ~?= Just aORb,
-  "union 3" ~: prs reUnion "a*" ~?= Nothing,
-  "base 1" ~: prs reBase "a|b" ~?= Just aORb,
-  "base 2" ~: prs reBase "a*" ~?= Just aStar,
-  "base 3" ~: prs reBase "ab" ~?= Just a,
-  "group 1" ~: prs reGroup "(a)" ~?= Just a,
-  "group 2" ~: prs reGroup "(a*)" ~?= Just aStar,
-  "group 3" ~: prs reGroup "((a))" ~?= Just a,
-  "string 1" ~: prs reString "ab" ~?= Just ab,
-  "string 2" ~: prs reString "abab" ~?= Just (Concat a (Concat b ab)),
-  "string 3" ~: prs reString "aba*" ~?= Just (Concat a (Concat b aStar)),
-  "string 4" ~: prs reString "ab(ab)*" ~?= Just (Concat a (Concat b (Star ab))),
-  "string 5" ~: prs reString "(ab)*" ~?= Just (Star ab),
-  "string 6" ~: prs reString "(a|b)*" ~?= Just (Star aORb),
-  "string 7" ~: prs reString "((ab)|b)*" ~?= Just (Star (Union ab b)),
-  "string 8" ~: prs reString "a(ab)*a" ~?= Just (Concat a (Concat (Star ab) a)),
-  "string 9" ~: prs reString "(ab)*(a|b)ab" ~?= 
-    Just (Concat (Star ab) (Concat aORb ab)),
-  "string 10" ~: prs reString "a(b)" ~?= Just ab,
-  "string 11" ~: prs reString "a(b)ab" ~?= Just (Concat a (Concat b ab)),
-  "string 12a" ~: prs reString "(ab)|(ba)" ~?= Just (Union ab (Concat b a)),
-  "string 12b" ~: prs reUnion "(ab)|(ba)" ~?= Just (Union ab (Concat b a)),
-  "string 13" ~: prs reString "((abb*)|b)|(ab)ab" ~?=
-    Just (Concat (Union (Union (Concat a (Concat b (Star b))) b) ab) ab)
-  ] where
-  a = Symbol 'a'
-  b = Symbol 'b'
-  ab = Concat a b
-  aStar = Star a
-  aORb = Union a b
-  src = "(stdin)"
-  prs re str = case parse re src str of
-    Right re -> Just re
-    _        -> Nothing
-
 data RegularExpression = Symbol Char 
   | Concat RegularExpression RegularExpression 
   | Union RegularExpression RegularExpression
@@ -164,13 +113,6 @@ countPossibilities re len = length $ listPossibilities re len
 
 listPossibilities :: RegularExpression -> Int -> [String]
 
-testListPossibilities = "Test listPossibilities" ~: TestList [
-  testListPossibilitiesSymbol,
-  testListPossibilitiesConcat,
-  testListPossibilitiesStar,
-  testListPossibilitiesUnion,
-  testListPossibilitiesComplex
-  ]
 
 listPossibilities (Symbol c) limit
   | limit > 0 = [[c]]
@@ -207,6 +149,42 @@ listPossibilities (Union r1 r2) limit = possibilities where
   o1 = listPossibilities r1 limit
   o2 = listPossibilities r2 limit
   possibilities = o1 ++ o2
+
+exactPossibilities :: RegularExpression -> Int -> [String]
+exactPossibilities re lim = filter (\x -> length x == lim) $ listPossibilities re lim
+
+example :: IO ()
+example = do
+  putStrLn "((a|b)*) 5"
+  putStrLn $ show $ List.sort possibilities 
+  putStrLn $ show $ length possibilities 
+  putStrLn "((a*)(b(a*))) 100"
+  putStrLn $ show $ List.sort pos2
+  putStrLn $ show $ length pos2
+  where
+  possibilities = exactPossibilities (Star aORb) 5 
+  a = Symbol 'a'
+  b = Symbol 'b'
+  aORb = Union a b  
+  pos2 = listPossibilities pat2 100
+  pat2 = Concat (Star a) (Concat b (Star a))
+
+
+test :: IO ()
+test = do
+  runTestTT $ TestList [
+    testListPossibilities,
+    testParse
+    ]
+  return ()
+
+testListPossibilities = "Test listPossibilities" ~: TestList [
+  testListPossibilitiesSymbol,
+  testListPossibilitiesConcat,
+  testListPossibilitiesStar,
+  testListPossibilitiesUnion,
+  testListPossibilitiesComplex
+  ]
 
 testListPossibilitiesSymbol :: Test
 testListPossibilitiesSymbol = "Test listPossibilities Symbol" ~: TestList [
@@ -266,22 +244,46 @@ testListPossibilitiesComplex = "Test listPossibilities Complex" ~: TestList [
   abcd = Concat ab cd
   abORcd = Union ab cd
 
-exactPossibilities :: RegularExpression -> Int -> [String]
-exactPossibilities re lim = filter (\x -> length x == lim) $ listPossibilities re lim
-
-example :: IO ()
-example = do
-  putStrLn "((a|b)*) 5"
-  putStrLn $ show $ List.sort possibilities 
-  putStrLn $ show $ length possibilities 
-  putStrLn "((a*)(b(a*))) 100"
-  putStrLn $ show $ List.sort pos2
-  putStrLn $ show $ length pos2
-  where
-  possibilities = exactPossibilities (Star aORb) 5 
+testParse :: Test 
+testParse = "Test parse" ~: TestList [
+  "sym 1" ~: prs reSymbol "?" ~?= Nothing,
+  "sym 2" ~: prs reSymbol "a" ~?= Just a,
+  "sym 3" ~: prs reSymbol "ab" ~?= Just a,
+  "star 1" ~: prs reStar "a*" ~?= Just aStar,
+  "star 2" ~: prs reStar "ab*" ~?= Nothing,
+  "union 1" ~: prs reUnion "ab" ~?= Nothing,
+  "union 2" ~: prs reUnion "a|b" ~?= Just aORb,
+  "union 3" ~: prs reUnion "a*" ~?= Nothing,
+  "base 1" ~: prs reBase "a|b" ~?= Just aORb,
+  "base 2" ~: prs reBase "a*" ~?= Just aStar,
+  "base 3" ~: prs reBase "ab" ~?= Just a,
+  "group 1" ~: prs reGroup "(a)" ~?= Just a,
+  "group 2" ~: prs reGroup "(a*)" ~?= Just aStar,
+  "group 3" ~: prs reGroup "((a))" ~?= Just a,
+  "string 1" ~: prs reString "ab" ~?= Just ab,
+  "string 2" ~: prs reString "abab" ~?= Just (Concat a (Concat b ab)),
+  "string 3" ~: prs reString "aba*" ~?= Just (Concat a (Concat b aStar)),
+  "string 4" ~: prs reString "ab(ab)*" ~?= Just (Concat a (Concat b (Star ab))),
+  "string 5" ~: prs reString "(ab)*" ~?= Just (Star ab),
+  "string 6" ~: prs reString "(a|b)*" ~?= Just (Star aORb),
+  "string 7" ~: prs reString "((ab)|b)*" ~?= Just (Star (Union ab b)),
+  "string 8" ~: prs reString "a(ab)*a" ~?= Just (Concat a (Concat (Star ab) a)),
+  "string 9" ~: prs reString "(ab)*(a|b)ab" ~?= 
+    Just (Concat (Star ab) (Concat aORb ab)),
+  "string 10" ~: prs reString "a(b)" ~?= Just ab,
+  "string 11" ~: prs reString "a(b)ab" ~?= Just (Concat a (Concat b ab)),
+  "string 12a" ~: prs reString "(ab)|(ba)" ~?= Just (Union ab (Concat b a)),
+  "string 12b" ~: prs reUnion "(ab)|(ba)" ~?= Just (Union ab (Concat b a)),
+  "string 13" ~: prs reString "((abb*)|b)|(ab)ab" ~?=
+    Just (Concat (Union (Union (Concat a (Concat b (Star b))) b) ab) ab)
+  ] where
   a = Symbol 'a'
   b = Symbol 'b'
-  aORb = Union a b  
-  pos2 = listPossibilities pat2 100
-  pat2 = Concat (Star a) (Concat b (Star a))
+  ab = Concat a b
+  aStar = Star a
+  aORb = Union a b
+  src = "(stdin)"
+  prs re str = case parse re src str of
+    Right re -> Just re
+    _        -> Nothing
 
