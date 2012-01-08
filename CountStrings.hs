@@ -1,5 +1,7 @@
 import Test.HUnit
 import qualified Data.List as List
+import qualified Data.Set as Set
+import Data.Set (Set)
 import Text.ParserCombinators.Parsec
 
 main :: IO ()
@@ -182,15 +184,24 @@ listPossibilities (Concat r1 r2) limit = combos where
 listPossibilities (Star _) 0 = [""]
 listPossibilities (Star r1) limit = possibilities where
   opt = listPossibilities r1 limit
-  possibilities = "": whileLimit opt limit opt
+  possibilities = "": whileLimitN opt limit optSet
+  optSet = Set.fromList opt 
 
   -- | Uses nub right now, really inefficient. probably should use some
   -- sort of memoization
-  whileLimit :: [String] -> Int -> [String] -> [String]
-  whileLimit base lim acc = pos where
-    new = List.nub [a++b | a <- base, b <- acc, length (a++b) <= lim]
-    pos = if null new || length new < length acc then acc 
-          else whileLimit base lim (List.nub $ acc ++ new)
+  {- whileLimit :: [String] -> Int -> [String] -> [String]-}
+  {- whileLimit base lim acc = pos where-}
+  {-   new = List.nub [a++b | a <- base, b <- acc, length (a++b) <= lim]-}
+  {-   pos = if null new || length new < length acc then acc -}
+  {-         else whileLimit base lim (List.nub $ acc ++ new)-}
+
+  whileLimitN :: [String] -> Int -> Set String -> [String]
+  whileLimitN base lim acc = pos where
+    combined = [a++b | a <- base, b <- Set.elems acc, length (a++b) <= lim]
+    new = Set.fromList combined
+    newAcc = Set.union acc new
+    pos = if Set.null new || Set.size new < Set.size acc then Set.elems acc
+          else whileLimitN base lim newAcc
 
 listPossibilities (Union r1 r2) limit = possibilities where
   o1 = listPossibilities r1 limit
@@ -271,6 +282,6 @@ example = do
   a = Symbol 'a'
   b = Symbol 'b'
   aORb = Union a b  
-  pos2 = exactPossibilities pat2 100
+  pos2 = listPossibilities pat2 100
   pat2 = Concat (Star a) (Concat b (Star a))
 
