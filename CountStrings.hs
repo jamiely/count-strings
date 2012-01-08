@@ -15,8 +15,8 @@ main = do
 
 reString :: GenParser Char st RegularExpression
 reString = do
-  result <- many (reGroup <|> reBase)
-  return $ reListConcat result
+  result <- try reConcat <|> reBase
+  return $ result
 
 reSymbol :: GenParser Char st RegularExpression
 reSymbol = do
@@ -29,28 +29,44 @@ lparen = char '('
 rparen :: GenParser Char st Char
 rparen = char ')'
 
+reConcat :: GenParser Char st RegularExpression
+reConcat = do
+  {- result <- try (many reGroup) <|> try (many reBase)-}
+  r1 <- try reGroup <|> reBase
+  r2 <- try reConcat <|> try reGroup <|> reBase
+  return $ Concat r1 r2
+
 reGroup :: GenParser Char st RegularExpression
 reGroup = do
   lparen
-  re <- reGroup <|> reBase
+  re <- try reGroup <|> try reConcat <|> reBase
   rparen
   return re
 
+reSymOrGroup = try reGroup <|> reSymbol
+
 reStar :: GenParser Char st RegularExpression
 reStar = do
-  sym <- reSymbol
+  sym <- reSymOrGroup
   char '*'
   return (Star sym)
 
 reUnion :: GenParser Char st RegularExpression
 reUnion = do
-  re1 <- reSymbol
+  re1 <- try rePart <|> try reConcat <|> reSymbol
   char '|'
-  re2 <- reSymbol
+  re2 <- try rePart <|> try reConcat <|> reSymbol
   return (Union re1 re2)
 
 reBase :: GenParser Char st RegularExpression
-reBase = try reUnion <|> try reStar <|> reSymbol
+reBase = try reUnion <|> try reStar <|> reSymbol 
+
+rePart :: GenParser Char st RegularExpression
+rePart = do
+  lparen
+  re <- reBase
+  rparen
+  return re
 
 testParse :: Test 
 testParse = "Test parse" ~: TestList [
@@ -70,7 +86,11 @@ testParse = "Test parse" ~: TestList [
   "group 3" ~: prs reGroup "((a))" ~?= Just a,
   "string 1" ~: prs reString "ab" ~?= Just ab,
   "string 2" ~: prs reString "abab" ~?= Just (Concat a (Concat b ab)),
-  "string 3" ~: prs reString "aba*" ~?= Just (Concat a (Concat b aStar))
+  "string 3" ~: prs reString "aba*" ~?= Just (Concat a (Concat b aStar)),
+  "string 4" ~: prs reString "ab(ab)*" ~?= Just (Concat a (Concat b (Star ab))),
+  "string 5" ~: prs reString "(ab)*" ~?= Just (Star ab),
+  "string 6" ~: prs reString "(a|b)*" ~?= Just (Star aORb),
+  "string 7" ~: prs reString "((ab)|b)*" ~?= Just (Star (Union ab b))
   ] where
   a = Symbol 'a'
   b = Symbol 'b'
